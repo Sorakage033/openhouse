@@ -297,14 +297,22 @@ static int decode_some(void)
   return 0;
 }
 
-/* ---------------- front-end amplifier (Holyiot 21017: SKY66112, CTX P0.24 / CRX P0.22) ----------------
+/* ---------------- front-end amplifier (SKY66112-11 on both boards we run this on) ----------------
+   Holyiot 21017: CTX P0.24 / CRX P0.22. SK Cheesecake Receiver 33 (nRF52833): CTX P0.17 / CRX P0.15.
    Both pins are GPIOTE task outputs. Software raises CTX before TXEN and CRX before RXEN; the TX->RX
    turnaround (DISABLED_RXEN shortcut) is too fast for the CPU, so PPI swaps CTX->CRX on that DISABLED. */
-#if BOARD_HOLYIOT
+#if BOARD_HOLYIOT || BOARD_CHEESECAKE
+#if BOARD_CHEESECAKE
+#define FEM_CTX_PIN 17
+#define FEM_CRX_PIN 15
+#define FEM_GT_CTX 0                 /* nRF52833 has GPIOTE channels 0-3 only (nRF52840 has 0-7) */
+#define FEM_GT_CRX 1
+#else
 #define FEM_CTX_PIN 24
 #define FEM_CRX_PIN 22
 #define FEM_GT_CTX 6
 #define FEM_GT_CRX 7
+#endif
 #define FEM_PPI 0
 static void fem_init(void)
 {

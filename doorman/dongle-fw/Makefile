@@ -19,11 +19,13 @@ LDFLAGS = -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Wl,--gc-se
 #   build/doorman_dongle_<v>_a.bin / _b.bin   firmware for bank A / B: self-updates over USB (cmd 0x40-0x42)
 #   build/doorman_dongle_<v>.hex (.uf2)       boot stub + bank A's image: what a bootloader installs
 #                                             (first install or rescue)
-VARIANTS = sd nosd holyiot pca10059 kuroshin
+VARIANTS = sd nosd holyiot pca10059 kuroshin cheesecake
 # A board selects its SoC and flash layout independently. Existing boards default to nrf52840/std.
 layout_sd = sd
 soc_check_52833 = nrf52833
 layout_check_52833 = 833_uf2
+soc_cheesecake = nrf52833
+layout_cheesecake = 833_uf2
 soc = $(or $(soc_$(1)),nrf52840)
 device_nrf52840 = NRF52840_XXAA
 device_nrf52833 = NRF52833_XXAA
@@ -35,10 +37,10 @@ chip_flags = -D$(device_$(call soc,$(1))) -DBANK_LAYOUT_833_UF2=$(if $(filter 83
 uses_sd = $(if $(filter sd,$(call layout,$(1))),1,0)
 board_flags = -DVARIANT_SD=$(call uses_sd,$(1)) -DBANK_LAYOUT_SD=$(call uses_sd,$(1)) \
   -DBOARD_HOLYIOT=$(if $(filter holyiot,$(1)),1,0) -DBOARD_PCA10059=$(if $(filter pca10059,$(1)),1,0) \
-  -DBOARD_KUROSHIN=$(if $(filter kuroshin,$(1)),1,0)
+  -DBOARD_KUROSHIN=$(if $(filter kuroshin,$(1)),1,0) -DBOARD_CHEESECAKE=$(if $(filter cheesecake,$(1)),1,0)
 
 all: $(foreach v,$(VARIANTS),build/doorman_dongle_$(v).hex build/doorman_dongle_$(v)_a.bin build/doorman_dongle_$(v)_b.bin) \
-  build/doorman_dongle_sd.uf2 build/doorman_dongle_nosd.uf2 build/doorman_dongle_idx.bin
+  build/doorman_dongle_sd.uf2 build/doorman_dongle_nosd.uf2 build/doorman_dongle_cheesecake.uf2 build/doorman_dongle_idx.bin
 
 define variant
 build/doorman_dongle_$(1).uf2: UF2_FAMILY = $(family_$(call soc,$(1)))

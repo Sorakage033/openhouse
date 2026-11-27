@@ -21,6 +21,49 @@ extern uint32_t __isr_vector[];
 #define LED_INIT() do {} while (0)
 #define LED_ON()   do {} while (0)
 #define LED_OFF()  do {} while (0)
+#elif BOARD_CHEESECAKE
+/* SK Cheesecake Receiver 33: WS2812B on P1.09 driven via 4 MHz SPIM2 (SCK P0.02, MOSI P1.09). */
+#define LED_SPI_SCK_PSEL  (2u)                  /* P0.02 */
+#define LED_SPI_MOSI_PSEL (9u | (1u << 5))      /* P1.09: PSEL bit 5 selects port 1 */
+#define LED_FRAME_ONE     0x70u                 /* 1: 750 ns high */
+#define LED_FRAME_ZERO    0x40u                 /* 0: 250 ns high */
+#define LED_GREEN_PEAK    32u
+static uint8_t led_buf[24];
+static uint32_t led_last = 0xFFFFFFFFu;
+
+static void led_init(void)
+{
+    NRF_SPIM2->PSEL.SCK  = LED_SPI_SCK_PSEL;
+    NRF_SPIM2->PSEL.MOSI = LED_SPI_MOSI_PSEL;
+    NRF_SPIM2->PSEL.MISO = 0xFFFFFFFFu;
+    NRF_SPIM2->CONFIG = 0;
+    NRF_SPIM2->FREQUENCY = 0x40000000u;         /* 4 Mbps */
+    NRF_SPIM2->ENABLE = 7;
+}
+static void led_send(uint32_t grb)
+{
+    while (NRF_SPIM2->EVENTS_STARTED && !NRF_SPIM2->EVENTS_END) {}
+    NRF_SPIM2->EVENTS_STARTED = 0;
+    NRF_SPIM2->EVENTS_END = 0;
+    for (int i = 0; i < 24; i++) led_buf[i] = ((grb >> (23 - i)) & 1u) ? LED_FRAME_ONE : LED_FRAME_ZERO;
+    NRF_SPIM2->TXD.PTR = (uint32_t)led_buf;
+    NRF_SPIM2->TXD.MAXCNT = sizeof led_buf;
+    NRF_SPIM2->TASKS_START = 1;
+}
+static void led_tick(uint32_t now)
+{
+    uint32_t up = now % 1200u;
+    if (up > 600u) up = 1200u - up;
+    const uint32_t g = (up * LED_GREEN_PEAK) / 600u;
+    const uint32_t b = g / 6u;
+    const uint32_t v = (g << 8) | b;
+    if (v == led_last) return;
+    led_last = v;
+    led_send((g << 16) | b);
+}
+#define LED_INIT() led_init()
+#define LED_ON()   do { led_last = 0xFFFFFFFFu; led_send((LED_GREEN_PEAK << 16) | (LED_GREEN_PEAK / 6u)); } while (0)
+#define LED_OFF()  do { led_last = 0xFFFFFFFFu; led_send(0); } while (0)
 #elif BOARD_NORDIC_DFU
 #define LED_PIN 6    /* P0.06: green LED, active low (Holyiot 21017 and PCA10059 alike) */
 #define LED_INIT() (NRF_P0->PIN_CNF[LED_PIN] = 1)
@@ -297,8 +340,8 @@ int main(void) {
     SCB->VTOR = (uint32_t)__isr_vector;     /* our own table, whatever the bootloader/MBR set */
     NRF_NVMC->ICACHECNF = NVMC_ICACHECNF_CACHEEN_Msk;   /* off after reset: every fetch waited on flash (decoding ~3x slower) */
     __DSB(); __ISB();
-#if BOARD_PCA10059
-    /* The PCA10059 runs straight off USB (VDDH), and a blank chip sets its GPIO supply (REGOUT0) to
+#if BOARD_PCA10059 || BOARD_CHEESECAKE
+    /* These boards run straight off USB (VDDH), and a blank chip sets its GPIO supply (REGOUT0) to
        1.8 V: too low to light the LEDs well. Like Nordic's board code: once, 3.0 V. Only clears bits
        of a UICR word still at its erased value, so no erase, and only when nothing set it yet. */
     if ((NRF_POWER->MAINREGSTATUS & POWER_MAINREGSTATUS_MAINREGSTATUS_Msk) &&
@@ -357,6 +400,11 @@ int main(void) {
         usb_service();
         if (pending_action && !pending_reply) { uint8_t a = pending_action; pending_action = 0; do_action(a, reply[3]); }
         uint32_t period = tud_mounted() ? 1000 : 200;
+        (void)period;
+#if BOARD_CHEESECAKE
+        led_tick(ms_ticks);
+#else
         if (ms_ticks % period < period / 10) LED_ON(); else LED_OFF();
+#endif
     }
 }

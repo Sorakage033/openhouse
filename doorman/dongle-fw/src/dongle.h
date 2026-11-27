@@ -39,12 +39,17 @@ enum { ST_OK = 0, ST_BAD_CMD = 1, ST_BAD_ARG = 2, ST_TIMEOUT = 3 };
 #ifndef BOARD_IDX
 #define BOARD_IDX 0
 #endif
+/* SK Cheesecake Receiver 33: nRF52833 (512 KB / 128 KB), Adafruit nRF52 bootloader (UF2 family 0x621e937a,
+   app at 0x1000, bootloader at 0x74000). Not a Nordic DFU board: DFU magics are Adafruit's (0x57 / 0x4E). */
+#ifndef BOARD_CHEESECAKE
+#define BOARD_CHEESECAKE 0
+#endif
 #define BOARD_NORDIC_DFU (BOARD_HOLYIOT || BOARD_PCA10059 || BOARD_KUROSHIN || BOARD_IDX)
-#define BOARD_ID (BOARD_HOLYIOT ? 1 : BOARD_PCA10059 ? 2 : BOARD_KUROSHIN ? 3 : BOARD_IDX ? 4 : 0)   /* cmd 0x01 byte 57: 4 the Index HMD radio */
+#define BOARD_ID (BOARD_HOLYIOT ? 1 : BOARD_PCA10059 ? 2 : BOARD_KUROSHIN ? 3 : BOARD_IDX ? 4 : BOARD_CHEESECAKE ? 5 : 0)   /* cmd 0x01 byte 57 */
 /* USB product string: the board this image is for. Host code matches the "Doorman " prefix (6767:0727). */
 #define DONGLE_PRODUCT (BOARD_HOLYIOT ? "Doorman Dongle Holyiot" : BOARD_PCA10059 ? "Doorman Dongle PCA10059" \
                         : BOARD_KUROSHIN ? "Doorman Dongle Kuroshin" : BOARD_IDX ? "Doorman Valve Index Radio" \
-                        : "Doorman Dongle Pro Micro")
+                        : BOARD_CHEESECAKE ? "Doorman Dongle nRF52833" : "Doorman Dongle Pro Micro")
 
 /* Adafruit nRF52 bootloader magic values in NRF_POWER->GPREGRET */
 #if BOARD_NORDIC_DFU
