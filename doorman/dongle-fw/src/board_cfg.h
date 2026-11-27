@@ -47,8 +47,8 @@ typedef struct __attribute__((packed, aligned(4))) {
     uint8_t  led_pin;      /* 14:     GPIO pin or WS2812 MOSI */
     uint8_t  led_pin2;     /* 15:     WS2812 SCK or BOARD_PIN_NONE */
     uint8_t  flags;        /* 16:     BOARD_FLAG_* */
-    uint8_t  reserved[11]; /* 17..27: zero */
-    char     name[32];     /* 28..59: NUL-terminated USB product string ("Doorman ...") */
+    uint8_t  reserved[3];  /* 17..19: zero */
+    char     name[40];     /* 20..59: NUL-terminated USB product string ("Doorman ...") */
     uint32_t crc32;        /* 60..63: CRC32(bytes 0..59); 0 = unpatched compile-time default */
 } board_cfg_t;
 

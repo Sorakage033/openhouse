@@ -33,7 +33,7 @@ static const uint8_t cfg_desc[] = {
 };
 const uint8_t *tud_descriptor_configuration_cb(uint8_t i) { (void)i; return cfg_desc; }
 
-static uint16_t str_buf[33];
+static uint16_t str_buf[41];
 const uint16_t *tud_descriptor_string_cb(uint8_t idx, uint16_t langid) {
     (void)langid;
     char serial[17];
@@ -55,7 +55,7 @@ const uint16_t *tud_descriptor_string_cb(uint8_t idx, uint16_t langid) {
     default: return NULL;
     }
     int n = 0;
-    while (s[n] && n < 32) { str_buf[1 + n] = (uint8_t)s[n]; n++; }
+    while (s[n] && n < 40) { str_buf[1 + n] = (uint8_t)s[n]; n++; }
     str_buf[0] = (uint16_t)((TUSB_DESC_STRING << 8) | (2 * n + 2));
     return str_buf;
 }

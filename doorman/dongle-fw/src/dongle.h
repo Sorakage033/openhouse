@@ -53,7 +53,7 @@ enum { ST_OK = 0, ST_BAD_CMD = 1, ST_BAD_ARG = 2, ST_TIMEOUT = 3 };
 /* USB product string: the board this image is for. Host code matches the "Doorman " prefix (6767:0727). */
 #define DONGLE_PRODUCT (BOARD_HOLYIOT ? "Doorman Dongle Holyiot" : BOARD_PCA10059 ? "Doorman Dongle PCA10059" \
                         : BOARD_KUROSHIN ? "Doorman Dongle Kuroshin" : BOARD_IDX ? "Doorman Valve Index Radio" \
-                        : BOARD_CHEESECAKE ? "Doorman Dongle nRF52833" : "Doorman Dongle Pro Micro")
+                        : BOARD_CHEESECAKE ? "Doorman Dongle SK Cheesecake RECV33" : "Doorman Dongle Pro Micro")
 
 /* Adafruit nRF52 bootloader magic values in NRF_POWER->GPREGRET */
 #if BOARD_NORDIC_DFU

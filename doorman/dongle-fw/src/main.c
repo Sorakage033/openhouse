@@ -39,7 +39,7 @@ const board_cfg_t g_board_cfg __attribute__((aligned(4), used)) = {
     .led_pin  = BOARD_PIN(1, 9),                /* MOSI: P1.09 */
     .led_pin2 = BOARD_PIN(0, 2),                /* SCK:  P0.02 */
     .flags    = BOARD_FLAG_REGOUT0_3V0,
-    .name     = "Doorman Dongle nRF52833",
+    .name     = "Doorman Dongle SK Cheesecake RECV33",
 #else
     .board_id = 5,
     .fem_type = FEM_NONE,
