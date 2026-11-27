@@ -26,6 +26,8 @@ soc_check_52833 = nrf52833
 layout_check_52833 = 833_uf2
 soc_cheesecake = nrf52833
 layout_cheesecake = 833_uf2
+soc_smol_52833 = nrf52833
+layout_smol_52833 = 833_uf2
 soc = $(or $(soc_$(1)),nrf52840)
 device_nrf52840 = NRF52840_XXAA
 device_nrf52833 = NRF52833_XXAA
@@ -37,7 +39,8 @@ chip_flags = -D$(device_$(call soc,$(1))) -DBANK_LAYOUT_833_UF2=$(if $(filter 83
 uses_sd = $(if $(filter sd,$(call layout,$(1))),1,0)
 board_flags = -DVARIANT_SD=$(call uses_sd,$(1)) -DBANK_LAYOUT_SD=$(call uses_sd,$(1)) \
   -DBOARD_HOLYIOT=$(if $(filter holyiot,$(1)),1,0) -DBOARD_PCA10059=$(if $(filter pca10059,$(1)),1,0) \
-  -DBOARD_KUROSHIN=$(if $(filter kuroshin,$(1)),1,0) -DBOARD_CHEESECAKE=$(if $(filter cheesecake,$(1)),1,0)
+  -DBOARD_KUROSHIN=$(if $(filter kuroshin,$(1)),1,0) -DBOARD_CHEESECAKE=$(if $(filter cheesecake,$(1)),1,0) \
+  -DBOARD_SMOL_GENERIC=$(if $(filter smol_52833,$(1)),1,0)
 
 all: $(foreach v,$(VARIANTS),build/doorman_dongle_$(v).hex build/doorman_dongle_$(v)_a.bin build/doorman_dongle_$(v)_b.bin) \
   build/doorman_dongle_sd.uf2 build/doorman_dongle_nosd.uf2 build/doorman_dongle_cheesecake.uf2 build/doorman_dongle_idx.bin
@@ -56,7 +59,7 @@ build/doorman_dongle_$(1).elf: Makefile src/stub.c src/banks.h src/dongle.h ld/s
 	  $(LDFLAGS) -Tld/stub_$(call layout,$(1)).ld -Wl,-Map=build/doorman_dongle_$(1).map -o $$@
 	arm-none-eabi-size $$@
 endef
-$(foreach v,$(VARIANTS) check_52833,$(eval $(call variant,$(v))))
+$(foreach v,$(VARIANTS) check_52833 smol_52833,$(eval $(call variant,$(v))))
 
 # Exercises both banks and the install-image pipeline. These files have no board-specific pin map.
 check-nrf52833: build/doorman_dongle_check_52833.uf2 build/doorman_dongle_check_52833_b.bin

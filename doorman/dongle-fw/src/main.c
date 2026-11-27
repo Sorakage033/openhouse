@@ -7,6 +7,7 @@
 #include "link.h"
 #include "banks.h"
 #include "target.h"
+#include "board_cfg.h"
 
 #ifndef VARIANT_SD
 #error "build with -DVARIANT_SD=0 or 1"
@@ -21,26 +22,50 @@ extern uint32_t __isr_vector[];
 #define LED_INIT() do {} while (0)
 #define LED_ON()   do {} while (0)
 #define LED_OFF()  do {} while (0)
-#elif BOARD_CHEESECAKE
-/* SK Cheesecake Receiver 33: WS2812B on P1.09 driven via 4 MHz SPIM2 (SCK P0.02, MOSI P1.09). */
-#define LED_SPI_SCK_PSEL  (2u)                  /* P0.02 */
-#define LED_SPI_MOSI_PSEL (9u | (1u << 5))      /* P1.09: PSEL bit 5 selects port 1 */
-#define LED_FRAME_ONE     0x70u                 /* 1: 750 ns high */
-#define LED_FRAME_ZERO    0x40u                 /* 0: 250 ns high */
-#define LED_GREEN_PEAK    32u
+#elif BOARD_SMOL_CFG
+/* Default board descriptor in .rodata; host tools can overwrite this 64 B block in a generic image. */
+const board_cfg_t g_board_cfg __attribute__((aligned(4), used)) = {
+    .magic    = BOARD_CFG_MAGIC,
+    .version  = BOARD_CFG_VERSION,
+#if BOARD_CHEESECAKE
+    .board_id = 5,
+    .fem_type = FEM_TWO_PIN,
+    .fem_ctx  = BOARD_PIN(0, 17),
+    .fem_crx  = BOARD_PIN(0, 15),
+    .fem_aux0 = BOARD_PIN_NONE,
+    .fem_aux1 = BOARD_PIN_NONE,
+    .tx_power = -4,
+    .led_type = LED_WS2812_SPI,
+    .led_pin  = BOARD_PIN(1, 9),                /* MOSI: P1.09 */
+    .led_pin2 = BOARD_PIN(0, 2),                /* SCK:  P0.02 */
+    .flags    = BOARD_FLAG_REGOUT0_3V0,
+    .name     = "Doorman Dongle nRF52833",
+#else
+    .board_id = 5,
+    .fem_type = FEM_NONE,
+    .fem_ctx  = BOARD_PIN_NONE,
+    .fem_crx  = BOARD_PIN_NONE,
+    .fem_aux0 = BOARD_PIN_NONE,
+    .fem_aux1 = BOARD_PIN_NONE,
+    .tx_power = 8,
+    .led_type = LED_NONE,
+    .led_pin  = BOARD_PIN_NONE,
+    .led_pin2 = BOARD_PIN_NONE,
+    .flags    = BOARD_FLAG_REGOUT0_3V0,
+    .name     = "Doorman Dongle Generic",
+#endif
+    .crc32    = 0,                              /* 0 = unpatched compile-time default */
+};
+
+#define LED_FRAME_ONE  0x70u
+#define LED_FRAME_ZERO 0x40u
+#define LED_GREEN_PEAK 32u
 static uint8_t led_buf[24];
 static uint32_t led_last = 0xFFFFFFFFu;
 
-static void led_init(void)
-{
-    NRF_SPIM2->PSEL.SCK  = LED_SPI_SCK_PSEL;
-    NRF_SPIM2->PSEL.MOSI = LED_SPI_MOSI_PSEL;
-    NRF_SPIM2->PSEL.MISO = 0xFFFFFFFFu;
-    NRF_SPIM2->CONFIG = 0;
-    NRF_SPIM2->FREQUENCY = 0x40000000u;         /* 4 Mbps */
-    NRF_SPIM2->ENABLE = 7;
-}
-static void led_send(uint32_t grb)
+static NRF_GPIO_Type *led_port(uint8_t pin) { return (pin & 32u) ? NRF_P1 : NRF_P0; }
+
+static void led_send_ws2812(uint32_t grb)
 {
     while (NRF_SPIM2->EVENTS_STARTED && !NRF_SPIM2->EVENTS_END) {}
     NRF_SPIM2->EVENTS_STARTED = 0;
@@ -50,20 +75,71 @@ static void led_send(uint32_t grb)
     NRF_SPIM2->TXD.MAXCNT = sizeof led_buf;
     NRF_SPIM2->TASKS_START = 1;
 }
-static void led_tick(uint32_t now)
+
+static void led_init(void)
 {
-    uint32_t up = now % 1200u;
-    if (up > 600u) up = 1200u - up;
-    const uint32_t g = (up * LED_GREEN_PEAK) / 600u;
-    const uint32_t b = g / 6u;
-    const uint32_t v = (g << 8) | b;
-    if (v == led_last) return;
-    led_last = v;
-    led_send((g << 16) | b);
+    const board_cfg_t *c = board_cfg_get();
+    if (!board_cfg_valid(c)) return;
+    if (c->led_type == LED_WS2812_SPI && c->led_pin != BOARD_PIN_NONE && c->led_pin2 != BOARD_PIN_NONE) {
+        NRF_SPIM2->PSEL.SCK  = c->led_pin2 & 0x3Fu;
+        NRF_SPIM2->PSEL.MOSI = c->led_pin  & 0x3Fu;
+        NRF_SPIM2->PSEL.MISO = 0xFFFFFFFFu;
+        NRF_SPIM2->CONFIG = 0;
+        NRF_SPIM2->FREQUENCY = 0x40000000u;
+        NRF_SPIM2->ENABLE = 7;
+    } else if ((c->led_type == LED_GPIO_HIGH || c->led_type == LED_GPIO_LOW) && c->led_pin != BOARD_PIN_NONE) {
+        led_port(c->led_pin)->PIN_CNF[c->led_pin & 31u] = 1;
+    }
+}
+
+static void led_on(void)
+{
+    const board_cfg_t *c = board_cfg_get();
+    if (!board_cfg_valid(c)) return;
+    if (c->led_type == LED_WS2812_SPI) {
+        led_last = 0xFFFFFFFFu;
+        led_send_ws2812((LED_GREEN_PEAK << 16) | (LED_GREEN_PEAK / 6u));
+    } else if (c->led_type == LED_GPIO_HIGH && c->led_pin != BOARD_PIN_NONE) {
+        led_port(c->led_pin)->OUTSET = 1u << (c->led_pin & 31u);
+    } else if (c->led_type == LED_GPIO_LOW && c->led_pin != BOARD_PIN_NONE) {
+        led_port(c->led_pin)->OUTCLR = 1u << (c->led_pin & 31u);
+    }
+}
+
+static void led_off(void)
+{
+    const board_cfg_t *c = board_cfg_get();
+    if (!board_cfg_valid(c)) return;
+    if (c->led_type == LED_WS2812_SPI) {
+        led_last = 0xFFFFFFFFu;
+        led_send_ws2812(0);
+    } else if (c->led_type == LED_GPIO_HIGH && c->led_pin != BOARD_PIN_NONE) {
+        led_port(c->led_pin)->OUTCLR = 1u << (c->led_pin & 31u);
+    } else if (c->led_type == LED_GPIO_LOW && c->led_pin != BOARD_PIN_NONE) {
+        led_port(c->led_pin)->OUTSET = 1u << (c->led_pin & 31u);
+    }
+}
+
+static void led_tick(uint32_t now, uint32_t period)
+{
+    const board_cfg_t *c = board_cfg_get();
+    if (!board_cfg_valid(c)) return;
+    if (c->led_type == LED_WS2812_SPI) {
+        uint32_t up = now % 1200u;
+        if (up > 600u) up = 1200u - up;
+        const uint32_t g = (up * LED_GREEN_PEAK) / 600u;
+        const uint32_t b = g / 6u;
+        const uint32_t v = (g << 8) | b;
+        if (v == led_last) return;
+        led_last = v;
+        led_send_ws2812((g << 16) | b);
+    } else if (c->led_type == LED_GPIO_HIGH || c->led_type == LED_GPIO_LOW) {
+        if (now % period < period / 10) led_on(); else led_off();
+    }
 }
 #define LED_INIT() led_init()
-#define LED_ON()   do { led_last = 0xFFFFFFFFu; led_send((LED_GREEN_PEAK << 16) | (LED_GREEN_PEAK / 6u)); } while (0)
-#define LED_OFF()  do { led_last = 0xFFFFFFFFu; led_send(0); } while (0)
+#define LED_ON()   led_on()
+#define LED_OFF()  led_off()
 #elif BOARD_NORDIC_DFU
 #define LED_PIN 6    /* P0.06: green LED, active low (Holyiot 21017 and PCA10059 alike) */
 #define LED_INIT() (NRF_P0->PIN_CNF[LED_PIN] = 1)
@@ -112,7 +188,11 @@ void crash_entry(uint32_t *frame, uint32_t type) {
     /* quick-crash counter lives in GPREGRET2 (retained across soft resets, cleared at power-on) */
     uint32_t q = (NRF_POWER->GPREGRET2 & 0xFF) + 1;
     NRF_POWER->GPREGRET2 = q;
+#if BOARD_SMOL_CFG
+    if (q >= QUICK_CRASH_LIMIT) { NRF_POWER->GPREGRET2 = 0; enter_bootloader(board_cfg_dfu_uf2_magic()); }
+#else
     if (q >= QUICK_CRASH_LIMIT) { NRF_POWER->GPREGRET2 = 0; enter_bootloader(GPREGRET_UF2_DFU); }
+#endif
     __disable_irq();
     NVIC_SystemReset();
 }
@@ -213,7 +293,11 @@ static void handle(const uint8_t *in, uint16_t len) {
         }
         d[52] = NRF_POWER->GPREGRET2;
         put32(d + 53, *(volatile uint32_t *)0x3000 == 0x51B1E5DB);   /* SoftDevice magic still in flash? */
+#if BOARD_SMOL_CFG
+        d[57] = board_cfg_id();
+#else
         d[57] = BOARD_ID;    /* 0 UF2 (Pro Micro style), 1 Holyiot 21017, 2 PCA10059, 3 Kuroshin (Nordic DFU) */
+#endif
         d[58] = safe_mode;
         d[59] = BOARD_IDX ? 0 : (running_bank() == BANK_A ? 1 : 2);   /* which bank runs (banks.h) */
         d[60] = DML_SLOTS;   /* slots it has (0 from firmware before 0x002A: 8) */
@@ -286,8 +370,13 @@ static void handle(const uint8_t *in, uint16_t len) {
 static void do_action(uint8_t a, uint8_t arg) {
     uint32_t t = ms_ticks; while (ms_ticks - t < 20) tud_task();   /* let the reply leave */
     switch (a) {
+#if BOARD_SMOL_CFG
+    case CMD_DFU_UF2:    enter_bootloader(board_cfg_dfu_uf2_magic()); break;
+    case CMD_DFU_SERIAL: enter_bootloader(board_cfg_dfu_serial_magic()); break;
+#else
     case CMD_DFU_UF2:    enter_bootloader(GPREGRET_UF2_DFU); break;
     case CMD_DFU_SERIAL: enter_bootloader(GPREGRET_SERIAL_DFU); break;
+#endif
     case CMD_RESET:      NVIC_SystemReset(); break;
     case CMD_CRASH_TEST:
         if (arg == 1) { void (*bad)(void) = (void (*)(void))0xFFFFFFF0; bad(); }  /* HardFault */
@@ -340,11 +429,17 @@ int main(void) {
     SCB->VTOR = (uint32_t)__isr_vector;     /* our own table, whatever the bootloader/MBR set */
     NRF_NVMC->ICACHECNF = NVMC_ICACHECNF_CACHEEN_Msk;   /* off after reset: every fetch waited on flash (decoding ~3x slower) */
     __DSB(); __ISB();
-#if BOARD_PCA10059 || BOARD_CHEESECAKE
+#if BOARD_PCA10059 || BOARD_SMOL_CFG
     /* These boards run straight off USB (VDDH), and a blank chip sets its GPIO supply (REGOUT0) to
        1.8 V: too low to light the LEDs well. Like Nordic's board code: once, 3.0 V. Only clears bits
        of a UICR word still at its erased value, so no erase, and only when nothing set it yet. */
+#if BOARD_SMOL_CFG
+    const board_cfg_t *bcfg = board_cfg_get();
+    if (board_cfg_valid(bcfg) && (bcfg->flags & BOARD_FLAG_REGOUT0_3V0) &&
+        (NRF_POWER->MAINREGSTATUS & POWER_MAINREGSTATUS_MAINREGSTATUS_Msk) &&
+#else
     if ((NRF_POWER->MAINREGSTATUS & POWER_MAINREGSTATUS_MAINREGSTATUS_Msk) &&
+#endif
         (NRF_UICR->REGOUT0 & UICR_REGOUT0_VOUT_Msk) == (UICR_REGOUT0_VOUT_DEFAULT << UICR_REGOUT0_VOUT_Pos)) {
         NRF_NVMC->CONFIG = NVMC_CONFIG_WEN_Wen; while (!NRF_NVMC->READY) {}
         NRF_UICR->REGOUT0 = (NRF_UICR->REGOUT0 & ~UICR_REGOUT0_VOUT_Msk) | (UICR_REGOUT0_VOUT_3V0 << UICR_REGOUT0_VOUT_Pos);
@@ -400,9 +495,8 @@ int main(void) {
         usb_service();
         if (pending_action && !pending_reply) { uint8_t a = pending_action; pending_action = 0; do_action(a, reply[3]); }
         uint32_t period = tud_mounted() ? 1000 : 200;
-        (void)period;
-#if BOARD_CHEESECAKE
-        led_tick(ms_ticks);
+#if BOARD_SMOL_CFG
+        led_tick(ms_ticks, period);
 #else
         if (ms_ticks % period < period / 10) LED_ON(); else LED_OFF();
 #endif

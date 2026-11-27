@@ -44,6 +44,10 @@ enum { ST_OK = 0, ST_BAD_CMD = 1, ST_BAD_ARG = 2, ST_TIMEOUT = 3 };
 #ifndef BOARD_CHEESECAKE
 #define BOARD_CHEESECAKE 0
 #endif
+#ifndef BOARD_SMOL_GENERIC
+#define BOARD_SMOL_GENERIC 0
+#endif
+#define BOARD_SMOL_CFG (BOARD_CHEESECAKE || BOARD_SMOL_GENERIC)
 #define BOARD_NORDIC_DFU (BOARD_HOLYIOT || BOARD_PCA10059 || BOARD_KUROSHIN || BOARD_IDX)
 #define BOARD_ID (BOARD_HOLYIOT ? 1 : BOARD_PCA10059 ? 2 : BOARD_KUROSHIN ? 3 : BOARD_IDX ? 4 : BOARD_CHEESECAKE ? 5 : 0)   /* cmd 0x01 byte 57 */
 /* USB product string: the board this image is for. Host code matches the "Doorman " prefix (6767:0727). */

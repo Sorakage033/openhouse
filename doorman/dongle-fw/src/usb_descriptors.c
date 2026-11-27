@@ -7,6 +7,7 @@
 // USB 2.0 hub's periodic budget (eight on a shared hub chip already failed with Code 10).
 #include "tusb.h"
 #include "dongle.h"
+#include "board_cfg.h"
 
 static const tusb_desc_device_t dev_desc = {
     .bLength = sizeof(tusb_desc_device_t), .bDescriptorType = TUSB_DESC_DEVICE,
@@ -40,7 +41,11 @@ const uint16_t *tud_descriptor_string_cb(uint8_t idx, uint16_t langid) {
     switch (idx) {
     case 0: str_buf[1] = 0x0409; str_buf[0] = (TUSB_DESC_STRING << 8) | 4; return str_buf;
     case 1: s = "openhouse"; break;
+#if BOARD_SMOL_CFG
+    case 2: s = board_cfg_product(); break;
+#else
     case 2: s = DONGLE_PRODUCT; break;
+#endif
     case 3: {
         static const char hx[] = "0123456789ABCDEF";
         uint32_t id[2] = { NRF_FICR->DEVICEID[1], NRF_FICR->DEVICEID[0] };

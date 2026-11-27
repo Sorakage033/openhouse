@@ -10,6 +10,7 @@
 #include "link.h"
 #include "dongle.h"
 #include "banks.h"
+#include "board_cfg.h"
 
 extern volatile uint32_t ms_ticks;
 static uint32_t us_now(void) { NRF_TIMER1->TASKS_CAPTURE[0] = 1; return NRF_TIMER1->CC[0]; }
@@ -297,22 +298,49 @@ static int decode_some(void)
   return 0;
 }
 
-/* ---------------- front-end amplifier (SKY66112-11 on both boards we run this on) ----------------
-   Holyiot 21017: CTX P0.24 / CRX P0.22. SK Cheesecake Receiver 33 (nRF52833): CTX P0.17 / CRX P0.15.
+/* ---------------- front-end amplifier (SKY66112 / RFX2401C / AT2401C two-pin CTX/CRX) ----------------
    Both pins are GPIOTE task outputs. Software raises CTX before TXEN and CRX before RXEN; the TX->RX
    turnaround (DISABLED_RXEN shortcut) is too fast for the CPU, so PPI swaps CTX->CRX on that DISABLED. */
-#if BOARD_HOLYIOT || BOARD_CHEESECAKE
-#if BOARD_CHEESECAKE
-#define FEM_CTX_PIN 17
-#define FEM_CRX_PIN 15
-#define FEM_GT_CTX 0                 /* nRF52833 has GPIOTE channels 0-3 only (nRF52840 has 0-7) */
+#if BOARD_SMOL_CFG
+#define FEM_GT_CTX 0                 /* GPIOTE channels 0-1 work on both nRF52833 (0-3) and nRF52840 (0-7) */
 #define FEM_GT_CRX 1
-#else
+#define FEM_PPI 0
+static uint8_t fem_enabled;
+static void fem_init(void)
+{
+  const board_cfg_t *c = board_cfg_get();
+  if (!board_cfg_valid(c) || c->fem_type != FEM_TWO_PIN ||
+      c->fem_ctx == BOARD_PIN_NONE || c->fem_crx == BOARD_PIN_NONE) {
+    fem_enabled = 0;
+    return;
+  }
+  fem_enabled = 1;
+  /* GPIOTE CONFIG: MODE=Task(3), PSEL=bits[12:8], PORT=bit[13]; (pin & 0x3F) << 8 sets both. */
+  NRF_GPIOTE->CONFIG[FEM_GT_CTX] = 3u | (((uint32_t)(c->fem_ctx & 0x3Fu)) << 8);
+  NRF_GPIOTE->CONFIG[FEM_GT_CRX] = 3u | (((uint32_t)(c->fem_crx & 0x3Fu)) << 8);
+  NRF_PPI->CH[FEM_PPI].EEP = (uint32_t)&NRF_RADIO->EVENTS_DISABLED;
+  NRF_PPI->CH[FEM_PPI].TEP = (uint32_t)&NRF_GPIOTE->TASKS_CLR[FEM_GT_CTX];
+  NRF_PPI->FORK[FEM_PPI].TEP = (uint32_t)&NRF_GPIOTE->TASKS_SET[FEM_GT_CRX];
+  NRF_PPI->CHENCLR = 1u << FEM_PPI;
+}
+static void fem_tx(void)  { if (!fem_enabled) return; NRF_GPIOTE->TASKS_CLR[FEM_GT_CRX] = 1; NRF_GPIOTE->TASKS_SET[FEM_GT_CTX] = 1; }
+static void fem_rx(void)  { if (!fem_enabled) return; NRF_GPIOTE->TASKS_CLR[FEM_GT_CTX] = 1; NRF_GPIOTE->TASKS_SET[FEM_GT_CRX] = 1; }
+static void fem_off(void) { if (!fem_enabled) return; NRF_PPI->CHENCLR = 1u << FEM_PPI;
+                            NRF_GPIOTE->TASKS_CLR[FEM_GT_CTX] = 1; NRF_GPIOTE->TASKS_CLR[FEM_GT_CRX] = 1; }
+static void fem_turnaround_arm(void)    { if (fem_enabled) NRF_PPI->CHENSET = 1u << FEM_PPI; }
+static void fem_turnaround_disarm(void) { if (fem_enabled) NRF_PPI->CHENCLR = 1u << FEM_PPI; }
+static uint32_t radio_txpower(void)
+{
+  const board_cfg_t *c = board_cfg_get();
+  if (board_cfg_valid(c)) return (uint32_t)(uint8_t)c->tx_power;
+  return RADIO_TXPOWER_TXPOWER_Pos8dBm;
+}
+#define RADIO_TXPOWER radio_txpower()
+#elif BOARD_HOLYIOT
 #define FEM_CTX_PIN 24
 #define FEM_CRX_PIN 22
 #define FEM_GT_CTX 6
 #define FEM_GT_CRX 7
-#endif
 #define FEM_PPI 0
 static void fem_init(void)
 {
