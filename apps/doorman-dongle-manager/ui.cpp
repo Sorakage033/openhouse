@@ -895,7 +895,7 @@ void Ui::Firmware(const DongleState& d) {
     char t[96];
     row("Dongle", d.serial);
     std::snprintf(t, sizeof t, "%d (%s build%s)", d.firmware,
-                  d.board == 4 ? "Valve Index radio" : d.board == 1 ? "Holyiot 21017" : d.board == 2 ? "PCA10059" : d.board == 3 ? (d.bank == 2 ? "Kuroshin, bank B" : "Kuroshin, bank A") : d.softdeviceVariant ? "Nordic bootloader" : "bare",
+                  d.board == 4 ? "Valve Index radio" : d.board == 5 ? (d.bank == 2 ? "SK Cheesecake nRF52833, bank B" : "SK Cheesecake nRF52833, bank A") : d.board == 1 ? "Holyiot 21017" : d.board == 2 ? "PCA10059" : d.board == 3 ? (d.bank == 2 ? "Kuroshin, bank B" : "Kuroshin, bank A") : d.softdeviceVariant ? "Nordic bootloader" : "bare",
                   d.watchdog ? ", watchdog" : "");
     row("Firmware", t);
     row("Up for", Uptime(d.uptimeMs));

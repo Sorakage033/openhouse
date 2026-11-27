@@ -58,7 +58,8 @@ struct DongleState {
   // CMD_INFO
   int firmware = 0;          // 0x0004
   bool softdeviceVariant = false, watchdog = false;
-  int board = 0;  // 0 UF2 (Pro Micro), 1 Holyiot 21017, 2 PCA10059, 3 Kuroshin (Nordic DFU), 4 Valve Index HMD radio
+  int board = 0;  // 0 UF2 (Pro Micro), 1 Holyiot 21017, 2 PCA10059, 3 Kuroshin (Nordic DFU), 4 Valve Index HMD radio,
+                  // 5 SK Cheesecake Receiver 33 (nRF52833, UF2)
   int bank = 0;   // 1 A, 2 B: the bank running (0: older firmware, updates through its bootloader)
   int slotCount = 8;  // slots it has (it says so from firmware 0x002A; older ones have 8)
   bool NordicDfu() const { return board == 1 || board == 2; }

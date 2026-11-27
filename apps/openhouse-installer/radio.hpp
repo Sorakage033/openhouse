@@ -97,7 +97,8 @@ struct DoormanDongleInfo {
   uint16_t firmware = 0;
   bool softDeviceBuild = false;  // running the "_sd" build
   int board = 0;                 // 0 UF2 (Pro Micro style), 1 Holyiot 21017, 2 PCA10059, 3 Kuroshin (Nordic DFU),
-                                 // 4 Valve Index HMD radio (Valve's bootloader)
+                                 // 4 Valve Index HMD radio (Valve's bootloader),
+                                 // 5 SK Cheesecake Receiver 33 (nRF52833, UF2)
   int bank = 0;                  // the bank it runs from (1 A, 2 B); 0: older firmware without banks
   int slots = 8;                 // the slots it has (it says so from firmware 0x002A; older ones have 8)
   int oldRadios = -1;            // its connected devices whose radio has an update (-1: not asked)

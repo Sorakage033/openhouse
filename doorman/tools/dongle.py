@@ -176,7 +176,7 @@ def bank_update(folder):
     if d[59] not in (1, 2): sys.exit("older firmware without banks: update it through its bootloader (flash)")
     running = "a" if d[59] == 1 else "b"
     target = "b" if running == "a" else "a"
-    board = {1: "holyiot", 2: "pca10059", 3: "kuroshin"}.get(d[57], "sd" if d[6] else "nosd")
+    board = {1: "holyiot", 2: "pca10059", 3: "kuroshin", 5: "cheesecake"}.get(d[57], "sd" if d[6] else "nosd")
     img = open(os.path.join(folder, f"doorman_dongle_{board}_{target}.bin"), "rb").read()
     img += b"\xff" * (-len(img) % 4)
     print(f"{board}: fw {d[4] | d[5] << 8:#06x} in bank {running.upper()}; writing {len(img)} bytes to bank {target.upper()}")

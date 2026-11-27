@@ -8,11 +8,13 @@ openhouse-installer looks for it:
   firmwares/dongle/doorman-holyiot.hex                Holyiot 21017 (Nordic DFU)
   firmwares/dongle/doorman-pca10059.hex               Nordic nRF52840 Dongle PCA10059 (same)
   firmwares/dongle/doorman-kuroshin.hex               Kuroshin dongle (same; DFU only by its reset pads)
+  firmwares/dongle/doorman-cheesecake.uf2             SK Cheesecake Receiver 33 (nRF52833, UF2 family 0x621e937a)
+  firmwares/dongle/doorman-cheesecake.hex             the same image as hex (SWD)
     (the above are what a bootloader installs: boot stub + firmware, for a first install or a rescue)
   firmwares/dongle/doorman-index.bin                  Valve Index HMD radio (one image at 0x26000, Valve's serial DFU)
   firmwares/dongle/bank/<board>-a.bin, -b.bin         the firmware for bank A / B: what a running
                                                       dongle updates itself with (board: sd, nosd,
-                                                      holyiot, pca10059, kuroshin)
+                                                      holyiot, pca10059, kuroshin, cheesecake)
   firmwares/dongle/bank/version.txt                   their firmware version (hex, DONGLE_FW_VERSION, doorman/common/doorman_versions.h):
                                                       the installer offers an update to a dongle on any other
   firmwares/radio/doorman-radio-wm3.fw      every 2.0-era device (nRF52 radio)
@@ -56,9 +58,11 @@ shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_nosd.uf2', out / 'do
 shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_holyiot.hex', out / 'dongle/doorman-holyiot.hex')
 shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_pca10059.hex', out / 'dongle/doorman-pca10059.hex')
 shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_kuroshin.hex', out / 'dongle/doorman-kuroshin.hex')
+shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_cheesecake.uf2', out / 'dongle/doorman-cheesecake.uf2')
+shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_cheesecake.hex', out / 'dongle/doorman-cheesecake.hex')
 shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_idx.bin', out / 'dongle/doorman-index.bin')
 (out / 'dongle/bank').mkdir()
-for board in ('sd', 'nosd', 'holyiot', 'pca10059', 'kuroshin'):
+for board in ('sd', 'nosd', 'holyiot', 'pca10059', 'kuroshin', 'cheesecake'):
     for bank in 'ab':
         shutil.copy2(repo / f'doorman/dongle-fw/build/doorman_dongle_{board}_{bank}.bin', out / f'dongle/bank/{board}-{bank}.bin')
 import re
