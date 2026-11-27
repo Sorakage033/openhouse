@@ -13,6 +13,7 @@
 #include <thread>
 #include <vector>
 
+#include "common/nordic_dfu.hpp"
 #include "device_type.hpp"
 #include "drives.hpp"
 #include "driver_install.hpp"
@@ -213,9 +214,11 @@ class Ui {
   struct DongleSeen {
     std::vector<Uf2Drive> drives;
     std::vector<std::string> ports;
+    std::vector<lh::dfu::SlimeVrPort> slimeReceivers;
     std::vector<DoormanDongleInfo> dongles;
     std::vector<std::string> indexRadios, indexBootloaders;   // the Index's stock radios, and radios in Valve's bootloader
   };
+  int smolBoardIdx_ = 0;  // selected PCB in lh::smol::SupportedBoards() for SlimeVR nRF Receiver mode
   std::function<bool(Job&)> indexFlash_;   // waits for the Index warning's Continue
   bool indexRestore_ = false;              // ...and it puts SteamVR's radio firmware back
   bool indexRestoreOnly_ = false;          // the Index page from Restore Firmware: restore buttons only

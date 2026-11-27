@@ -42,4 +42,13 @@ bool ValveInitPacket(const std::vector<uint8_t>& referenceDat, uint32_t version,
 // One file out of a zip (stored or deflated).
 bool ReadZipEntry(const std::string& zip, const std::string& name, std::vector<uint8_t>* out);
 
+// ---- SlimeVR nRF Receiver (1209:7690) CDC ACM console ----
+struct SlimeVrPort {
+  std::string port;
+  std::string board;   // "Board: ..." from `info`
+  std::string target;  // "Target: ..." from `info`
+};
+std::vector<SlimeVrPort> FindSlimeVrReceivers();
+bool SendSlimeVrDfu(const std::string& port, std::string* error);
+
 }  // namespace lh::dfu

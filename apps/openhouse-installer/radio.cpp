@@ -803,7 +803,7 @@ std::vector<DoormanDongleInfo> FindDoormanDongles() {
     if (dev.Ok() && dev.Command(0x01, nullptr, 0, r) && std::memcmp(r + 1, "OHDG", 4) == 0) {
       o.firmware = uint16_t(r[5] | r[6] << 8);
       o.softDeviceBuild = r[7] != 0;
-      o.board = r[58] <= 4 ? r[58] : 0;
+      o.board = r[58] <= 16 ? r[58] : 0;
       o.bank = r[60] <= 2 ? r[60] : 0;
       o.slots = r[61] >= 1 && r[61] <= 16 ? r[61] : 8;
     }

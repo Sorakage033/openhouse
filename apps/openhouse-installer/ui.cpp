@@ -19,6 +19,7 @@
 
 #include "common/dongle_bank.hpp"
 #include "common/nordic_dfu.hpp"
+#include "common/smol_boards.hpp"
 #include "common/ui_scale.hpp"
 #include "common/ui_theme.hpp"
 #include "lh/github.hpp"
@@ -1699,6 +1700,10 @@ void Ui::WatchDongles(int board) {
     if (board == 4) {
       s.indexRadios = FindIndexRadios();
       for (const auto& p : lh::dfu::FindValveBootloaders()) s.indexBootloaders.push_back(p.serial);
+    } else if (board == 5) {
+      s.slimeReceivers = lh::dfu::FindSlimeVrReceivers();
+      s.drives = FindUf2Drives();
+      s.ports = lh::dfu::FindBootloaderPorts();
     } else if (board) {
       s.ports = lh::dfu::FindBootloaderPorts();
     } else {
@@ -1718,12 +1723,13 @@ void Ui::DonglePage() {
       Prompt("Which dongle do you have?");
       const auto watch = [this](int board) { WatchDongles(board); };
       // Board ids (DoormanDongleInfo::board) in tile order.
-      static constexpr int kBoards[] = {1, 2, 0, 3, 4};
+      static constexpr int kBoards[] = {1, 2, 0, 3, 4, 5};
       const int tile = Tiles({{Icon::Dongle, "Holyiot 21017", "Nordic bootloader", Tint::None, "Recommended"},
                               {Icon::Dongle, "Nordic PCA10059 Dongle", "Nordic bootloader"},
                               {Icon::Dongle, "ProMicro nRF52840", "Adafruit bootloader. Soldering an antenna to the board is highly recommended"},
                               {Icon::Dongle, "Kuroshin", "It needs to be put into DFU mode by opening the dongle and shorting two pins"},
-                              {Icon::Headset, "Valve Index", "The headset's own radio. Index only", Tint::Yellow}},
+                              {Icon::Headset, "Valve Index", "The headset's own radio. Index only", Tint::Yellow},
+                              {Icon::Dongle, "SlimeVR nRF Receiver", "For official and third-party SlimeVR receivers"}},
                              ImGui::GetFontSize() * 15);
       // The Index's radio is found by Valve's radio USB id, which other headsets' radios (Bigscreen
       // Beyond) and Valve's own dongles share: another headset's radio can be picked. Accepted first.
@@ -1759,9 +1765,12 @@ void Ui::DonglePage() {
         }
       };
       if (!DeviceAccess()) { back(); return; }
-      Step(1, dongleBoard_ == 4 ? "Plug the headset in and close SteamVR" : "Plug the dongle in");
+      Step(1, dongleBoard_ == 4 ? "Plug the headset in and close SteamVR"
+              : dongleBoard_ == 5 ? "Plug your SlimeVR nRF receiver in"
+                                  : "Plug the dongle in");
       Step(2, dongleBoard_ == 4 ? (indexRestoreOnly_ ? "The radio running Doorman gets SteamVR's firmware back"
                                                      : "One of the headset's two radios gets Doorman, the other stays with SteamVR")
+              : dongleBoard_ == 5 ? "Running SlimeVR receivers are auto-detected. If already in bootloader mode, pick your PCB below."
               : dongleBoard_ == 3 ? "If it doesn't show up, open the dongle and briefly short pads 1 and 5 to put it in DFU mode"
               : dongleBoard_ == 1 ? "If it doesn't show up, bring a magnet close to the dongle's LED window to put it in DFU mode"
               : dongleBoard_ ? "If it doesn't show up, press its RESET button to put it in DFU mode"
@@ -1799,7 +1808,8 @@ void Ui::DonglePage() {
         ImGui::EndGroup();
       }
       ImGui::Spacing();
-      if (seen.drives.empty() && seen.ports.empty() && seen.dongles.empty() && seen.indexRadios.empty() && seen.indexBootloaders.empty())
+      if (seen.drives.empty() && seen.ports.empty() && seen.dongles.empty() && seen.indexRadios.empty() &&
+          seen.indexBootloaders.empty() && seen.slimeReceivers.empty())
         ImGui::TextColored(kMuted, dongleBoard_ == 4 ? "Waiting for the headset..." : "Waiting for the dongle...");
       // It restarts as a Doorman Dongle: check it answers.
       // A wall-clock deadline, not a pass count: a dongle that shows up but doesn't answer makes each
@@ -1944,6 +1954,131 @@ void Ui::DonglePage() {
           ImGui::SameLine();
           if (BigButton("Cancel", fs * 9)) ImGui::CloseCurrentPopup();
           ImGui::EndPopup();
+        }
+        back();
+        return;
+      }
+      if (dongleBoard_ == 5) {
+        const auto& smolBoards = lh::smol::SupportedBoards();
+        if (smolBoardIdx_ < 0 || smolBoardIdx_ >= int(smolBoards.size())) smolBoardIdx_ = 0;
+        const float bw = ImGui::GetFontSize() * 36;
+        static const auto flashSmolUf2 = [](Job& j, const Uf2Drive& drive, const lh::smol::SmolBoard& sb) {
+          if ((sb.soc == lh::smol::Soc::Nrf52833 && drive.is52840) ||
+              (sb.soc == lh::smol::Soc::Nrf52840 && drive.is52833)) {
+            j.Fail("selected PCB SoC does not match this UF2 bootloader (" + drive.board + ")");
+            return false;
+          }
+          const fs::path base = FirmwareFolder() / "dongle" / lh::smol::BaseFirmwareFilename(sb, drive.softDevice);
+          j.Log("PCB: " + std::string(sb.displayName));
+          j.Log("Base firmware: " + Utf8(base.filename()));
+          std::string uf2, error;
+          if (!ReadFile(base, &uf2)) { j.Fail("base firmware not found (" + Utf8(base.filename()) + ")"); return false; }
+          if (!lh::smol::PatchUf2Image(uf2, sb, &error)) { j.Fail(error); return false; }
+          if (!CopyUf2Data(drive, uf2, &error, [&](float f) { j.Status(f * 0.8f, "Flashing"); })) { j.Fail(error); return false; }
+          return verify(j);
+        };
+        static const auto flashSmolDfu = [](Job& j, const std::string& port, const lh::smol::SmolBoard& sb) {
+          const fs::path base = FirmwareFolder() / "dongle" / "doorman-smol-52840-dfu.hex";
+          j.Log("PCB: " + std::string(sb.displayName));
+          j.Log("Base firmware: " + Utf8(base.filename()));
+          lh::dfu::Image image;
+          std::string error;
+          if (!lh::dfu::LoadHex(Utf8(base), 0x1000, 0xDA000, &image, &error)) { j.Fail(error); return false; }
+          if (!lh::smol::PatchRawImage(image.data, sb, &error)) { j.Fail(error); return false; }
+          j.Log("Bootloader on " + port);
+          if (!lh::dfu::Flash(port, image, [&](float f) { j.Status(f * 0.8f, "Flashing"); }, &error)) { j.Fail(error); return false; }
+          return verify(j);
+        };
+
+        // Manual PCB selector (used for UF2/DFU bootloader mode, unknown SlimeVR boards, or bank updates).
+        ImGui::SetNextItemWidth(bw);
+        if (ImGui::BeginCombo("Receiver PCB", smolBoards[size_t(smolBoardIdx_)].displayName)) {
+          for (int i = 0; i < int(smolBoards.size()); ++i) {
+            const bool sel = i == smolBoardIdx_;
+            if (ImGui::Selectable(smolBoards[size_t(i)].displayName, sel)) smolBoardIdx_ = i;
+            if (sel) ImGui::SetItemDefaultFocus();
+          }
+          ImGui::EndCombo();
+        }
+        ImGui::Spacing();
+
+        // 1. Live SlimeVR receivers (1209:7690): auto-identify via `info` and trigger `dfu`.
+        for (const auto& sr : seen.slimeReceivers) {
+          const std::string unsup = lh::smol::UnsupportedReason(sr.board, sr.target);
+          if (!unsup.empty()) {
+            ImGui::TextColored(kWarn, "SlimeVR Receiver (%s - %s): %s", sr.port.c_str(), sr.board.c_str(), unsup.c_str());
+            continue;
+          }
+          const int matched = lh::smol::MatchBoard(sr.board, sr.target);
+          const lh::smol::SmolBoard sb = smolBoards[size_t(matched >= 0 ? matched : smolBoardIdx_)];
+          const std::string label = "SlimeVR Receiver (" + sr.port + ")  -  " +
+                                    (matched >= 0 ? std::string(sb.displayName)
+                                                  : (sr.board.empty() ? "Unknown PCB" : sr.board) + " [using selected PCB]");
+          if (BigButton(label.c_str(), bw)) {
+            start([sr, sb](Job& j) {
+              const auto drivesBefore = FindUf2Drives();
+              const auto portsBefore = lh::dfu::FindBootloaderPorts();
+              j.Status(0.05f, "Entering DFU bootloader");
+              j.Log("Sending dfu command to " + sr.port);
+              std::string error;
+              if (!lh::dfu::SendSlimeVrDfu(sr.port, &error)) { j.Fail(error); return false; }
+              for (int i = 0; i < 150; ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                if (sb.boot == lh::smol::Boot::NordicDfu) {
+                  for (const auto& port : lh::dfu::FindBootloaderPorts())
+                    if (std::find(portsBefore.begin(), portsBefore.end(), port) == portsBefore.end())
+                      return flashSmolDfu(j, port, sb);
+                } else {
+                  for (const auto& drive : FindUf2Drives())
+                    if (std::none_of(drivesBefore.begin(), drivesBefore.end(),
+                                     [&](const Uf2Drive& b) { return b.mount == drive.mount; }))
+                      return flashSmolUf2(j, drive, sb);
+                }
+              }
+              j.Fail("the receiver didn't enter bootloader mode, put it in DFU/UF2 mode manually and try again");
+              return false;
+            });
+          }
+        }
+
+        // 2. UF2 bootloader drives already mounted.
+        const lh::smol::SmolBoard selected = smolBoards[size_t(smolBoardIdx_)];
+        for (const auto& d : seen.drives) {
+          const std::string label = "UF2 Drive " + d.name + (d.board.empty() ? "" : "  (" + d.board + ")");
+          if (BigButton(label.c_str(), bw)) start([d, selected](Job& j) { return flashSmolUf2(j, d, selected); });
+        }
+
+        // 3. Nordic DFU serial ports already present.
+        for (const auto& port : seen.ports) {
+          const std::string label = "Nordic DFU bootloader (" + port + ")";
+          if (BigButton(label.c_str(), bw)) start([port, selected](Job& j) { return flashSmolDfu(j, port, selected); });
+        }
+
+        // 4. Already-flashed Doorman SlimeVR receivers (board == 5): bank self-update with patched generic image.
+        for (const auto& d : seen.dongles) {
+          char label[128];
+          std::snprintf(label, sizeof label, "Doorman Dongle %s (update using selected PCB)", d.serial.c_str());
+          if (!BigButton(label, bw)) continue;
+          const DoormanDongleInfo dongle = d;
+          start([dongle, selected](Job& j) {
+            const char* baseName = selected.soc == lh::smol::Soc::Nrf52833 ? "smol_52833"
+                                 : selected.boot == lh::smol::Boot::NordicDfu ? "smol_52840_dfu"
+                                 : selected.boot == lh::smol::Boot::Uf2Sd ? "smol_52840_sd"
+                                 : (selected.boot == lh::smol::Boot::Uf2Auto && dongle.softDeviceBuild) ? "smol_52840_sd"
+                                 : "smol_52840_nosd";
+            const fs::path file = FirmwareFolder() / "dongle" / "bank" /
+                                  (std::string(baseName) + (dongle.bank == 1 ? "-b.bin" : "-a.bin"));
+            j.Log("PCB: " + std::string(selected.displayName));
+            j.Log("Bank firmware: " + Utf8(file.filename()));
+            std::ifstream in(file, std::ios::binary);
+            std::vector<uint8_t> image((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            if (image.size() < 1024) { j.Fail("bank firmware not found (" + Utf8(file.filename()) + ")"); return false; }
+            std::string error;
+            if (!lh::smol::PatchRawImage(image, selected, &error)) { j.Fail(error); return false; }
+            if (!BankUpdate(dongle, std::move(image), [&](float f) { j.Status(f * 0.8f, "Flashing"); }, &error)) { j.Fail(error); return false; }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+            return verify(j);
+          });
         }
         back();
         return;

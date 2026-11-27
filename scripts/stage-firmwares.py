@@ -60,9 +60,13 @@ shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_pca10059.hex', out /
 shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_kuroshin.hex', out / 'dongle/doorman-kuroshin.hex')
 shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_cheesecake.uf2', out / 'dongle/doorman-cheesecake.uf2')
 shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_cheesecake.hex', out / 'dongle/doorman-cheesecake.hex')
+shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_smol_52833.uf2', out / 'dongle/doorman-smol-52833.uf2')
+shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_smol_52840_nosd.uf2', out / 'dongle/doorman-smol-52840-nosd.uf2')
+shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_smol_52840_sd.uf2', out / 'dongle/doorman-smol-52840-sd.uf2')
+shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_smol_52840_dfu.hex', out / 'dongle/doorman-smol-52840-dfu.hex')
 shutil.copy2(repo / 'doorman/dongle-fw/build/doorman_dongle_idx.bin', out / 'dongle/doorman-index.bin')
 (out / 'dongle/bank').mkdir()
-for board in ('sd', 'nosd', 'holyiot', 'pca10059', 'kuroshin', 'cheesecake'):
+for board in ('sd', 'nosd', 'holyiot', 'pca10059', 'kuroshin', 'cheesecake', 'smol_52833', 'smol_52840_nosd', 'smol_52840_sd', 'smol_52840_dfu'):
     for bank in 'ab':
         shutil.copy2(repo / f'doorman/dongle-fw/build/doorman_dongle_{board}_{bank}.bin', out / f'dongle/bank/{board}-{bank}.bin')
 import re

@@ -19,9 +19,10 @@ LDFLAGS = -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Wl,--gc-se
 #   build/doorman_dongle_<v>_a.bin / _b.bin   firmware for bank A / B: self-updates over USB (cmd 0x40-0x42)
 #   build/doorman_dongle_<v>.hex (.uf2)       boot stub + bank A's image: what a bootloader installs
 #                                             (first install or rescue)
-VARIANTS = sd nosd holyiot pca10059 kuroshin cheesecake
+VARIANTS = sd nosd holyiot pca10059 kuroshin cheesecake smol_52833 smol_52840_nosd smol_52840_sd smol_52840_dfu
 # A board selects its SoC and flash layout independently. Existing boards default to nrf52840/std.
 layout_sd = sd
+layout_smol_52840_sd = sd
 soc_check_52833 = nrf52833
 layout_check_52833 = 833_uf2
 soc_cheesecake = nrf52833
@@ -40,10 +41,12 @@ uses_sd = $(if $(filter sd,$(call layout,$(1))),1,0)
 board_flags = -DVARIANT_SD=$(call uses_sd,$(1)) -DBANK_LAYOUT_SD=$(call uses_sd,$(1)) \
   -DBOARD_HOLYIOT=$(if $(filter holyiot,$(1)),1,0) -DBOARD_PCA10059=$(if $(filter pca10059,$(1)),1,0) \
   -DBOARD_KUROSHIN=$(if $(filter kuroshin,$(1)),1,0) -DBOARD_CHEESECAKE=$(if $(filter cheesecake,$(1)),1,0) \
-  -DBOARD_SMOL_GENERIC=$(if $(filter smol_52833,$(1)),1,0)
+  -DBOARD_SMOL_GENERIC=$(if $(filter smol_52833 smol_52840_nosd smol_52840_sd smol_52840_dfu,$(1)),1,0)
 
 all: $(foreach v,$(VARIANTS),build/doorman_dongle_$(v).hex build/doorman_dongle_$(v)_a.bin build/doorman_dongle_$(v)_b.bin) \
-  build/doorman_dongle_sd.uf2 build/doorman_dongle_nosd.uf2 build/doorman_dongle_cheesecake.uf2 build/doorman_dongle_idx.bin
+  build/doorman_dongle_sd.uf2 build/doorman_dongle_nosd.uf2 build/doorman_dongle_cheesecake.uf2 \
+  build/doorman_dongle_smol_52833.uf2 build/doorman_dongle_smol_52840_nosd.uf2 build/doorman_dongle_smol_52840_sd.uf2 \
+  build/doorman_dongle_idx.bin
 
 define variant
 build/doorman_dongle_$(1).uf2: UF2_FAMILY = $(family_$(call soc,$(1)))
@@ -59,7 +62,7 @@ build/doorman_dongle_$(1).elf: Makefile src/stub.c src/banks.h src/dongle.h ld/s
 	  $(LDFLAGS) -Tld/stub_$(call layout,$(1)).ld -Wl,-Map=build/doorman_dongle_$(1).map -o $$@
 	arm-none-eabi-size $$@
 endef
-$(foreach v,$(VARIANTS) check_52833 smol_52833,$(eval $(call variant,$(v))))
+$(foreach v,$(VARIANTS) check_52833,$(eval $(call variant,$(v))))
 
 # Exercises both banks and the install-image pipeline. These files have no board-specific pin map.
 check-nrf52833: build/doorman_dongle_check_52833.uf2 build/doorman_dongle_check_52833_b.bin

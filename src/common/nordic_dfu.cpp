@@ -425,14 +425,14 @@ bool LoadHex(const std::string& path, uint32_t minAddress, uint32_t maxAddress, 
   return true;
 }
 
-std::vector<std::string> FindBootloaderPorts() {
+std::vector<std::string> FindSerialPortsByVidPid(uint16_t vid, uint16_t pid) {
   std::vector<std::string> out;
 #ifdef _WIN32
   static const GUID kPorts = {0x4D36E978, 0xE325, 0x11CE, {0xBF, 0xC1, 0x08, 0x00, 0x2B, 0xE1, 0x03, 0x18}};
   HDEVINFO set = SetupDiGetClassDevsW(&kPorts, nullptr, nullptr, DIGCF_PRESENT);
   if (set == INVALID_HANDLE_VALUE) return out;
   char want[32];
-  std::snprintf(want, sizeof want, "VID_%04X&PID_%04X", kVid, kPid);
+  std::snprintf(want, sizeof want, "VID_%04X&PID_%04X", vid, pid);
   SP_DEVINFO_DATA info{};
   info.cbSize = sizeof info;
   for (DWORD i = 0; SetupDiEnumDeviceInfo(set, i, &info); ++i) {
@@ -468,13 +468,69 @@ std::vector<std::string> FindBootloaderPorts() {
       if (name.rfind("ttyACM", 0) != 0) continue;
       // device -> the USB interface; its parent holds the IDs
       const std::string usb = "/sys/class/tty/" + name + "/device/../";
-      if (readHex(usb + "idVendor") == kVid && readHex(usb + "idProduct") == kPid) out.push_back("/dev/" + name);
+      if (readHex(usb + "idVendor") == vid && readHex(usb + "idProduct") == pid) out.push_back("/dev/" + name);
     }
     closedir(dir);
   }
   std::sort(out.begin(), out.end());
 #endif
   return out;
+}
+
+std::vector<std::string> FindBootloaderPorts() {
+  return FindSerialPortsByVidPid(kVid, kPid);
+}
+
+std::vector<SlimeVrPort> FindSlimeVrReceivers() {
+  constexpr uint16_t kSlimeVid = 0x1209, kSlimePid = 0x7690;
+  std::vector<SlimeVrPort> out;
+  for (const std::string& p : FindSerialPortsByVidPid(kSlimeVid, kSlimePid)) {
+    SlimeVrPort item;
+    item.port = p;
+    Port serial;
+    std::string err;
+    if (serial.Open(p, &err)) {
+      const char* cmd = "info\r\n";
+      serial.Write(reinterpret_cast<const uint8_t*>(cmd), std::strlen(cmd));
+      std::string text;
+      const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(350);
+      uint8_t buf[256];
+      while (std::chrono::steady_clock::now() < until) {
+        const long n = serial.Read(buf, sizeof buf);
+        if (n < 0) break;
+        if (n > 0) {
+          text.append(reinterpret_cast<const char*>(buf), size_t(n));
+          if (text.find("Board:") != std::string::npos && text.find("Target:") != std::string::npos) break;
+        }
+      }
+      auto extract = [&](const char* key) -> std::string {
+        const size_t pos = text.find(key);
+        if (pos == std::string::npos) return {};
+        size_t s = pos + std::strlen(key);
+        while (s < text.size() && (text[s] == ' ' || text[s] == '\t')) ++s;
+        size_t e = s;
+        while (e < text.size() && text[e] != '\r' && text[e] != '\n') ++e;
+        while (e > s && (text[e - 1] == ' ' || text[e - 1] == '\t')) --e;
+        return text.substr(s, e - s);
+      };
+      item.board = extract("Board:");
+      item.target = extract("Target:");
+    }
+    out.push_back(std::move(item));
+  }
+  return out;
+}
+
+bool SendSlimeVrDfu(const std::string& portName, std::string* error) {
+  Port serial;
+  if (!serial.Open(portName, error)) return false;
+  const char* cmd = "dfu\r\n";
+  if (!serial.Write(reinterpret_cast<const uint8_t*>(cmd), std::strlen(cmd))) {
+    if (error) *error = "failed to send dfu command to " + portName;
+    return false;
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  return true;
 }
 
 bool Flash(const std::string& portName, const Image& image, const std::function<void(float)>& progress, std::string* error,

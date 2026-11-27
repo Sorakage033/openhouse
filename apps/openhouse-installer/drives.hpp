@@ -32,9 +32,12 @@ struct Uf2Drive : Drive {
   std::string model;          // INFO_UF2.TXT "Model"
   bool softDevice = false;    // a SoftDevice is in flash (the "_sd" firmware goes after it)
   bool softDeviceKnown = false;
+  bool is52833 = false;       // INFO_UF2.TXT mentions nRF52833 / PCA10100 / Cheesecake
+  bool is52840 = false;       // INFO_UF2.TXT mentions nRF52840 / ProMicro / XIAO
 };
 std::vector<Uf2Drive> FindUf2Drives();
 bool CopyUf2(const Uf2Drive& d, const fs::path& file, std::string* error, const std::function<void(float)>& progress);
+bool CopyUf2Data(const Uf2Drive& d, const std::string& data, std::string* error, const std::function<void(float)>& progress);
 
 void Eject(const Drive& d);  // Linux: unmount; Windows: nothing (the device resets itself)
 

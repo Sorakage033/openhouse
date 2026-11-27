@@ -265,14 +265,19 @@ std::vector<Uf2Drive> FindUf2Drives() {
     std::string lower = sd;
     std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return char(std::tolower(c)); });
     u.softDevice = u.softDeviceKnown && lower.find("not") == std::string::npos && lower.find("none") == std::string::npos;
+    std::string idAll = u.board + " " + u.model;
+    std::transform(idAll.begin(), idAll.end(), idAll.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    u.is52833 = idAll.find("52833") != std::string::npos || idAll.find("pca10100") != std::string::npos ||
+                idAll.find("cheesecake") != std::string::npos || idAll.find("recv33") != std::string::npos;
+    u.is52840 = idAll.find("52840") != std::string::npos || idAll.find("promicro") != std::string::npos ||
+                idAll.find("nice!nano") != std::string::npos || idAll.find("xiao") != std::string::npos;
     out.push_back(u);
   }
   return out;
 }
 
-bool CopyUf2(const Uf2Drive& d, const fs::path& file, std::string* error, const std::function<void(float)>& progress) {
-  std::string data;
-  if (!ReadFile(file, &data) || data.size() < 512 || data.size() % 512) { *error = "the firmware file is missing or broken"; return false; }
+bool CopyUf2Data(const Uf2Drive& d, const std::string& data, std::string* error, const std::function<void(float)>& progress) {
+  if (data.size() < 512 || data.size() % 512) { *error = "the firmware file is missing or broken"; return false; }
   const fs::path target = d.mount / "FIRMWARE.UF2";
   std::ofstream out(target, std::ios::binary | std::ios::trunc);
   if (!out) { *error = "couldn't write to the dongle's drive"; return false; }
@@ -289,6 +294,12 @@ bool CopyUf2(const Uf2Drive& d, const fs::path& file, std::string* error, const 
   sync();
 #endif
   return true;
+}
+
+bool CopyUf2(const Uf2Drive& d, const fs::path& file, std::string* error, const std::function<void(float)>& progress) {
+  std::string data;
+  if (!ReadFile(file, &data)) { *error = "the firmware file is missing or broken"; return false; }
+  return CopyUf2Data(d, data, error, progress);
 }
 
 void Eject(const Drive& d) {
