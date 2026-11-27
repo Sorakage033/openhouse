@@ -6,6 +6,8 @@
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <mutex>
+#include <set>
 #include <thread>
 
 #include <zlib.h>
@@ -481,20 +483,45 @@ std::vector<std::string> FindBootloaderPorts() {
   return FindSerialPortsByVidPid(kVid, kPid);
 }
 
+namespace {
+std::mutex g_slimeCacheMu;
+std::map<std::string, SlimeVrPort> g_slimeCache;
+}  // namespace
+
 std::vector<SlimeVrPort> FindSlimeVrReceivers() {
   constexpr uint16_t kSlimeVid = 0x1209, kSlimePid = 0x7690;
+  const auto ports = FindSerialPortsByVidPid(kSlimeVid, kSlimePid);
+  const std::set<std::string> present(ports.begin(), ports.end());
+  {
+    std::lock_guard<std::mutex> lk(g_slimeCacheMu);
+    for (auto it = g_slimeCache.begin(); it != g_slimeCache.end();) {
+      if (!present.count(it->first)) it = g_slimeCache.erase(it);
+      else ++it;
+    }
+  }
   std::vector<SlimeVrPort> out;
-  for (const std::string& p : FindSerialPortsByVidPid(kSlimeVid, kSlimePid)) {
+  for (const std::string& p : ports) {
+    {
+      std::lock_guard<std::mutex> lk(g_slimeCacheMu);
+      auto it = g_slimeCache.find(p);
+      if (it != g_slimeCache.end() && !it->second.board.empty()) {
+        out.push_back(it->second);
+        continue;
+      }
+    }
     SlimeVrPort item;
     item.port = p;
     Port serial;
     std::string err;
     if (serial.Open(p, &err)) {
-      const char* cmd = "info\r\n";
+      // Wait briefly for Zephyr CDC ACM DTR wake-up and drain any pending banner bytes.
+      std::this_thread::sleep_for(std::chrono::milliseconds(60));
+      uint8_t buf[256];
+      while (serial.Read(buf, sizeof buf) > 0) {}
+      const char* cmd = "\r\ninfo\r\n";
       serial.Write(reinterpret_cast<const uint8_t*>(cmd), std::strlen(cmd));
       std::string text;
-      const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(350);
-      uint8_t buf[256];
+      const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(800);
       while (std::chrono::steady_clock::now() < until) {
         const long n = serial.Read(buf, sizeof buf);
         if (n < 0) break;
@@ -516,20 +543,29 @@ std::vector<SlimeVrPort> FindSlimeVrReceivers() {
       item.board = extract("Board:");
       item.target = extract("Target:");
     }
+    if (!item.board.empty()) {
+      std::lock_guard<std::mutex> lk(g_slimeCacheMu);
+      g_slimeCache[p] = item;
+    }
     out.push_back(std::move(item));
   }
   return out;
 }
 
 bool SendSlimeVrDfu(const std::string& portName, std::string* error) {
+  {
+    std::lock_guard<std::mutex> lk(g_slimeCacheMu);
+    g_slimeCache.erase(portName);
+  }
   Port serial;
   if (!serial.Open(portName, error)) return false;
-  const char* cmd = "dfu\r\n";
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  const char* cmd = "\r\ndfu\r\n";
   if (!serial.Write(reinterpret_cast<const uint8_t*>(cmd), std::strlen(cmd))) {
     if (error) *error = "failed to send dfu command to " + portName;
     return false;
   }
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  std::this_thread::sleep_for(std::chrono::milliseconds(60));
   return true;
 }
 
