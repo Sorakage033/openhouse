@@ -1723,13 +1723,13 @@ void Ui::DonglePage() {
       Prompt("Which dongle do you have?");
       const auto watch = [this](int board) { WatchDongles(board); };
       // Board ids (DoormanDongleInfo::board) in tile order.
-      static constexpr int kBoards[] = {1, 2, 0, 3, 4, 5};
+      static constexpr int kBoards[] = {1, 5, 2, 0, 3, 4};
       const int tile = Tiles({{Icon::Dongle, "Holyiot 21017", "Nordic bootloader", Tint::None, "Recommended"},
+                              {Icon::Dongle, "SlimeVR nRF Receiver", "For official and third-party SlimeVR receivers"},
                               {Icon::Dongle, "Nordic PCA10059 Dongle", "Nordic bootloader"},
                               {Icon::Dongle, "ProMicro nRF52840", "Adafruit bootloader. Soldering an antenna to the board is highly recommended"},
                               {Icon::Dongle, "Kuroshin", "It needs to be put into DFU mode by opening the dongle and shorting two pins"},
-                              {Icon::Headset, "Valve Index", "The headset's own radio. Index only", Tint::Yellow},
-                              {Icon::Dongle, "SlimeVR nRF Receiver", "For official and third-party SlimeVR receivers"}},
+                              {Icon::Headset, "Valve Index", "The headset's own radio. Index only", Tint::Yellow}},
                              ImGui::GetFontSize() * 15);
       // The Index's radio is found by Valve's radio USB id, which other headsets' radios (Bigscreen
       // Beyond) and Valve's own dongles share: another headset's radio can be picked. Accepted first.
