@@ -798,6 +798,7 @@ std::vector<DoormanDongleInfo> FindDoormanDongles() {
     DoormanDongleInfo o;
     o.serial = Narrow(d->serial_number);
     o.path = d->path;
+    o.product = Narrow(d->product_string);
     DoormanDongle dev(o.path);
     uint8_t r[62];
     if (dev.Ok() && dev.Command(0x01, nullptr, 0, r) && std::memcmp(r + 1, "OHDG", 4) == 0) {

@@ -2054,27 +2054,25 @@ void Ui::DonglePage() {
           if (BigButton(label.c_str(), bw)) start([port, selected](Job& j) { return flashSmolDfu(j, port, selected); });
         }
 
-        // 4. Already-flashed Doorman SlimeVR receivers (board == 5): bank self-update with patched generic image.
+        // 4. Already-flashed Doorman SlimeVR receivers (board == 5): bank self-update, auto-matching PCB by USB product name.
         for (const auto& d : seen.dongles) {
-          char label[128];
-          std::snprintf(label, sizeof label, "Doorman Dongle %s (update using selected PCB)", d.serial.c_str());
-          if (!BigButton(label, bw)) continue;
+          const int matched = lh::smol::MatchBoardByProduct(d.product);
+          const lh::smol::SmolBoard targetBoard = smolBoards[size_t(matched >= 0 ? matched : smolBoardIdx_)];
+          const std::string baseTitle = d.product.empty() ? "Doorman Dongle" : d.product;
+          const std::string label = baseTitle + " (" + d.serial + ")" + (matched >= 0 ? "" : " [using selected PCB]");
+          if (!BigButton(label.c_str(), bw)) continue;
           const DoormanDongleInfo dongle = d;
-          start([dongle, selected](Job& j) {
-            const char* baseName = selected.soc == lh::smol::Soc::Nrf52833 ? "smol_52833"
-                                 : selected.boot == lh::smol::Boot::NordicDfu ? "smol_52840_dfu"
-                                 : selected.boot == lh::smol::Boot::Uf2Sd ? "smol_52840_sd"
-                                 : (selected.boot == lh::smol::Boot::Uf2Auto && dongle.softDeviceBuild) ? "smol_52840_sd"
-                                 : "smol_52840_nosd";
+          start([dongle, targetBoard](Job& j) {
+            const char* baseName = lh::smol::BaseBankName(targetBoard, dongle.softDeviceBuild);
             const fs::path file = FirmwareFolder() / "dongle" / "bank" /
                                   (std::string(baseName) + (dongle.bank == 1 ? "-b.bin" : "-a.bin"));
-            j.Log("PCB: " + std::string(selected.displayName));
+            j.Log("PCB: " + std::string(targetBoard.displayName));
             j.Log("Bank firmware: " + Utf8(file.filename()));
             std::ifstream in(file, std::ios::binary);
             std::vector<uint8_t> image((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
             if (image.size() < 1024) { j.Fail("bank firmware not found (" + Utf8(file.filename()) + ")"); return false; }
             std::string error;
-            if (!lh::smol::PatchRawImage(image, selected, &error)) { j.Fail(error); return false; }
+            if (!lh::smol::PatchRawImage(image, targetBoard, &error)) { j.Fail(error); return false; }
             if (!BankUpdate(dongle, std::move(image), [&](float f) { j.Status(f * 0.8f, "Flashing"); }, &error)) { j.Fail(error); return false; }
             std::this_thread::sleep_for(std::chrono::milliseconds(1500));
             return verify(j);
@@ -2479,10 +2477,29 @@ void Ui::StartDongleUpdate(const std::vector<DongleSlot>& slots) {
       j.Fail("the dongle wasn't updated");
       return false;
     }
-    const fs::path file = FirmwareFolder() / "dongle" / "bank" / lh::dongle_bank::ImageName(dongle.board, dongle.softDeviceBuild, dongle.bank);
-    std::ifstream in(file, std::ios::binary);
-    const std::vector<uint8_t> image((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    if (image.size() < 1024) { set(-1, 3, "Firmware not found in the firmwares folder"); j.Fail("the dongle wasn't updated"); return false; }
+    auto loadBankImage = [](const DoormanDongleInfo& info, std::vector<uint8_t>* out, std::string* err) {
+      if (info.board == 5) {
+        const int idx = lh::smol::MatchBoardByProduct(info.product);
+        if (idx < 0) { if (err) *err = "unknown SlimeVR receiver PCB; update via Install or Update Firmware > Doorman"; return false; }
+        const auto& sb = lh::smol::SupportedBoards()[size_t(idx)];
+        const fs::path f = FirmwareFolder() / "dongle" / "bank" /
+                           (std::string(lh::smol::BaseBankName(sb, info.softDeviceBuild)) + (info.bank == 1 ? "-b.bin" : "-a.bin"));
+        std::ifstream fin(f, std::ios::binary);
+        out->assign((std::istreambuf_iterator<char>(fin)), std::istreambuf_iterator<char>());
+        if (out->size() < 1024) { if (err) *err = "firmware not found in the firmwares folder"; return false; }
+        return lh::smol::PatchRawImage(*out, sb, err);
+      }
+      const fs::path f = FirmwareFolder() / "dongle" / "bank" / lh::dongle_bank::ImageName(info.board, info.softDeviceBuild, info.bank);
+      std::ifstream fin(f, std::ios::binary);
+      out->assign((std::istreambuf_iterator<char>(fin)), std::istreambuf_iterator<char>());
+      if (out->size() < 1024) { if (err) *err = "firmware not found in the firmwares folder"; return false; }
+      return true;
+    };
+    {
+      std::vector<uint8_t> probe;
+      std::string probeErr;
+      if (!loadBankImage(dongle, &probe, &probeErr)) { set(-1, 3, probeErr); j.Fail("the dongle wasn't updated"); return false; }
+    }
     for (int attempt = 1; attempt <= 3; ++attempt) {
       set(-1, 1, attempt == 1 ? "Updating" : "Updating, try " + std::to_string(attempt) + " of 3");
       // Its bank changes with every update: find it again for the current one.
@@ -2491,10 +2508,9 @@ void Ui::StartDongleUpdate(const std::vector<DongleSlot>& slots) {
         if (d.serial == dongle.serial) now = d;
       if (now.firmware == packaged) { set(-1, 2, "Updated"); remember(); return true; }
       std::string error;
-      const fs::path f = FirmwareFolder() / "dongle" / "bank" / lh::dongle_bank::ImageName(now.board, now.softDeviceBuild, now.bank);
-      std::ifstream fin(f, std::ios::binary);
-      std::vector<uint8_t> img((std::istreambuf_iterator<char>(fin)), std::istreambuf_iterator<char>());
-      if (BankUpdate(now, std::move(img), [&](float p) { j.Status((float(step) + p) / float(steps), "Updating the dongle"); }, &error)) {
+      std::vector<uint8_t> img;
+      if (loadBankImage(now, &img, &error) &&
+          BankUpdate(now, std::move(img), [&](float p) { j.Status((float(step) + p) / float(steps), "Updating the dongle"); }, &error)) {
         for (int i = 0; i < 100; ++i) {   // it restarts into the new bank
           std::this_thread::sleep_for(std::chrono::milliseconds(200));
           for (const auto& d : FindDoormanDongles())

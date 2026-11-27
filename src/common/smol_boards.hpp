@@ -121,6 +121,27 @@ inline int MatchBoard(const std::string& board, const std::string& target) {
   return -1;
 }
 
+// Matches a running Doorman dongle's USB product string (e.g. "Doorman Dongle SK Cheesecake RECV33")
+// back to its SupportedBoards() entry, or -1 if unrecognized.
+inline int MatchBoardByProduct(const std::string& product) {
+  const std::string p = Lower(product);
+  if (p.empty()) return -1;
+  const auto& list = SupportedBoards();
+  for (size_t i = 0; i < list.size(); ++i) {
+    if (p == Lower(list[i].usbProduct)) return int(i);
+  }
+  if (p.find("cheesecake") != std::string::npos || p == "doorman dongle nrf52833") return MatchBoard("sk_cheesecake_recv33", "");
+  return -1;
+}
+
+inline const char* BaseBankName(const SmolBoard& b, bool softDevice) {
+  if (b.soc == Soc::Nrf52833) return "smol_52833";
+  if (b.boot == Boot::NordicDfu) return "smol_52840_dfu";
+  if (b.boot == Boot::Uf2Sd) return "smol_52840_sd";
+  if (b.boot == Boot::Uf2Auto && softDevice) return "smol_52840_sd";
+  return "smol_52840_nosd";
+}
+
 // Base firmware filename under firmwares/dongle/ for a given board (and detected UF2 SoftDevice flag).
 inline const char* BaseFirmwareFilename(const SmolBoard& b, bool uf2HasSoftDevice) {
   if (b.soc == Soc::Nrf52833) return "doorman-smol-52833.uf2";

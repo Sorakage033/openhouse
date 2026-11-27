@@ -93,7 +93,7 @@ bool FlashWireless(const WirelessDevice& device, const RadioImage& image, const 
 
 // ---- Doorman Dongles ----
 struct DoormanDongleInfo {
-  std::string serial, path;
+  std::string serial, path, product;
   uint16_t firmware = 0;
   bool softDeviceBuild = false;  // running the "_sd" build
   int board = 0;                 // 0 UF2 (Pro Micro style), 1 Holyiot 21017, 2 PCA10059, 3 Kuroshin (Nordic DFU),
